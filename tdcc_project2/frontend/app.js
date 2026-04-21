@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8001/api";
+const API_BASE = window.location.origin + "/api";
 
 const INDUSTRY_CATEGORY_MAP = {
     'tech': ['半導體', '電腦及週邊設備', '通信網路', '光電', '電子零組件', '電子通路', '資訊服務', '其他電子', '科技', 'Technology', 'Semiconductors', 'Electronic', 'Software', 'Computing', 'Electronic Components', 'Consumer Electronics', 'Communication Equipment', 'Computer Hardware'],
