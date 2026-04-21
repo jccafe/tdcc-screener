@@ -85,7 +85,7 @@ def is_cache_valid(stock_id):
     
     # 檢查檔案修改時間
     mod_time = os.path.getmtime(cache_path)
-    current_time = datetime.now().timestamp()
+    current_time = datetime.datetime.now().timestamp()
     return (current_time - mod_time) < CACHE_EXPIRY
 
 def read_price_cache(stock_id):
@@ -120,7 +120,7 @@ def write_price_cache(stock_id, hist, chart_json):
     }
     
     cache_data = {
-        "timestamp": datetime.now().timestamp(),
+        "timestamp": datetime.datetime.now().timestamp(),
         "price_data": hist_dict,
         "chart": chart_json
     }
@@ -199,9 +199,9 @@ def get_stock_price(stock_id: str, force_refresh: bool = False):
                     "cached": True
                 }
         
-        # 獲取近兩個月的股價數據（為了計算 MA20 需要更多歷史數據）
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=60)
+        # 獲取近兩個月股價數據
+        end_date = datetime.datetime.now()
+        start_date = end_date - datetime.timedelta(days=60)
         
         # 格式化為 yfinance 所需的日期格式
         start_str = start_date.strftime('%Y-%m-%d')
