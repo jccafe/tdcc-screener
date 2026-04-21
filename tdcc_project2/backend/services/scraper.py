@@ -236,23 +236,36 @@ def _contains_chinese(text: str):
     return any('\u4e00' <= ch <= '\u9fff' for ch in text)
 
 
-def get_tw_yahoo_local_name(stock_id: str):
+def get_tw_yahoo_local_info(stock_id: str):
+    """
+    從 Yahoo 奇摩股市抓取名稱與產業
+    """
     try:
         url = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
         res = requests.get(url, headers=headers, timeout=10)
+        res.encoding = 'utf-8'
         if res.status_code == 200:
-            match = re.search(r'<title>([^<]+?)\s*\(', res.text)
-            if match:
-                return match.group(1).strip()
-            match = re.search(r'<h1[^>]*>([^<]+)</h1>', res.text)
-            if match:
-                return match.group(1).strip()
+            name = None
+            industry = None
+            
+            # 抓取名稱
+            match_name = re.search(r'<h1[^>]*>([^<]+)</h1>', res.text)
+            if match_name:
+                name = match_name.group(1).strip()
+            
+            # 抓取產業 (標籤格式通常為 <a href="..." class="...">半導體</a>)
+            # 我們找特徵
+            match_industry = re.search(r'href="/class/([^"]+)"[^>]*>([^<]+)</a>', res.text)
+            if match_industry:
+                industry = match_industry.group(2).strip()
+                
+            return name, industry
     except Exception:
         pass
-    return None
+    return None, None
 
 
 def get_stock_info(stock_id: str):
@@ -272,17 +285,27 @@ def get_stock_info(stock_id: str):
         'Building Materials': '建材營造',
         'Packaged Foods': '食品加工',
         'Farm Products': '農產品',
-        'Footwear & Accessories': '鞋類及配件'
+        'Footwear & Accessories': '鞋類及配件',
+        'Semiconductors': '半導體',
+        'Communication Equipment': '通信網路',
+        'Computer Hardware': '電腦周邊',
+        'Consumer Electronics': '光電',
+        'Software': '資訊服務',
+        'Electronic Components': '電子零組件',
+        'Electronic Distribution': '電子通路',
+        'Apparel Manufacturing': '紡織纖維',
+        'Auto Parts': '汽車工業',
+        'Chemicals': '化學工業'
     }
     
     result = {'name': None, 'industry': None}
     try:
-        # 優先從 Yahoo 取得中文名稱
-        yahoo_name = get_tw_yahoo_local_name(stock_id)
-        if yahoo_name:
-            result['name'] = yahoo_name
+        # 優先從 Yahoo 取得中文名稱與產業
+        y_name, y_industry = get_tw_yahoo_local_info(stock_id)
+        if y_name: result['name'] = y_name
+        if y_industry: result['industry'] = y_industry
 
-        # 從 yfinance 取得產業資訊（無論是否有 Yahoo 名稱）
+        # 從 yfinance 取得產業資訊 (備援)
         for market in ['TW', 'TWO']:
             ticker = f"{stock_id}.{market}"
             stock = yf.Ticker(ticker)
