@@ -423,32 +423,28 @@ def get_stock_price_and_ma(stock_id: str, ma_days=20, target_date=None, cache=No
 
 def get_stock_name(stock_id: str):
     """獲取股票名稱（優先繁體中文名稱）"""
-    def _contains_chinese(text: str):
-        return any('\u4e00' <= ch <= '\u9fff' for ch in text)
-
     try:
+        # 1. 優先使用我們強化的 Yahoo 爬蟲 (這是中文名稱最準確的來源)
+        local_name, _ = get_tw_yahoo_local_info(stock_id)
+        if local_name:
+            # 檢查是否抓到雜訊
+            if not any(x in local_name for x in ["Yahoo", "股市", "登入", "頁"]):
+                return local_name
+
+        # 2. 備援：從 yfinance 獲取
         for market in ['TW', 'TWO']:
             ticker = f"{stock_id}.{market}"
             stock = yf.Ticker(ticker)
             info = getattr(stock, 'info', {}) or {}
-
-            if info:
-                # 優先使用 shortName，如果含中文則回傳
-                if 'shortName' in info and info['shortName']:
-                    if _contains_chinese(info['shortName']):
-                        return info['shortName']
-                # 否則使用 longName
-                if 'longName' in info and info['longName']:
-                    if _contains_chinese(info['longName']):
-                        return info['longName']
-
-        # 最後再嘗試任何可用名稱
-        stock = yf.Ticker(f"{stock_id}.TW")
-        info = getattr(stock, 'info', {}) or {}
-        if 'shortName' in info and info['shortName']:
-            return info['shortName']
-        if 'longName' in info and info['longName']:
-            return info['longName']
+            
+            # 嘗試取得名稱，並進行過濾
+            for key in ['shortName', 'longName']:
+                name = info.get(key)
+                if name:
+                    # 只要名稱不乾淨，一律棄用
+                    if any(x in str(name) for x in ["Yahoo", "股市", "登入", "頁"]):
+                        continue
+                    return name
 
         return f"股票{stock_id}"
     except Exception as e:
