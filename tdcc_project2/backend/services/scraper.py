@@ -238,47 +238,33 @@ def _contains_chinese(text: str):
 
 def get_tw_yahoo_local_info(stock_id: str):
     """
-    從 Yahoo 奇摩股市抓取名稱與產業
+    強化的 Yahoo 奇摩股市解析器
     """
     try:
-        url = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW"
+        url = f"https://tw.stock.yahoo.com/quote/{stock_id}" # 不加 .TW 有時反而更穩
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
         }
         res = requests.get(url, headers=headers, timeout=10)
         res.encoding = 'utf-8'
-        if res.status_code == 200:
-            # 1. 抓取名稱 (多重保險模式)
-            raw_html = res.text
-            
-            # 模式 A: <title>名稱 (代號) - 股價 ...
-            match_a = re.search(r'<title>([^<]+?)\s*\('+re.escape(stock_id)+r'\)', raw_html)
-            # 模式 B: <title>代號 名稱 - 股價 ...
-            match_b = re.search(r'<title>'+re.escape(stock_id)+r'\s+([^<]+?)\s*-[^<]*</title>', raw_html)
-            # 模式 C: 標題中任何包含括號代號的文字
-            match_c = re.search(r'([^<>\-]+?)\s*\('+re.escape(stock_id)+r'\)', raw_html)
+        html = res.text
+        
+        name = None
+        industry = None
+        
+        # 1. 精準名稱解析 (從 title 標籤分離)
+        title_match = re.search(r'<title>([^<]+?)\s*\('+re.escape(stock_id)+r'\)', html)
+        if title_match:
+            name = title_match.group(1).strip()
+            if "Yahoo" in name: name = None
 
-            if match_a: name = match_a.group(1).strip()
-            elif match_b: name = match_b.group(1).strip()
-            elif match_c: name = match_c.group(1).strip()
-
-            # 額外清理
-            if name:
-                # 剔除奇怪的 prefix
-                name = re.sub(r'^[^\w\u4e00-\u9fff]+', '', name)
-                # 再次檢查黑名單
-                if any(x in name for x in ["Yahoo", "股市", "登入", "電子報", "首頁"]):
-                    name = None
-                elif len(name) > 10:
-                    name = None
+        # 2. 精準產業解析 (從 class 連結解析)
+        # 台灣 Yahoo 的格式範例: href="/class/半導體"
+        industry_match = re.search(r'href="/class/([^"\/]+)"[^>]*>([^<]+)</a>', html)
+        if industry_match:
+            industry = industry_match.group(2).strip()
             
-            # 2. 抓取產業
-            # 台灣 Yahoo 的產業標籤通常在 <div class="D(f) Ai(c) Mb(6px)"> 附近
-            match_industry = re.search(r'href="/class/([^"]+)"[^>]*>([^<]+)</a>', res.text)
-            if match_industry:
-                industry = match_industry.group(2).strip()
-                
-            return name, industry
+        return name, industry
     except Exception:
         pass
     return None, None

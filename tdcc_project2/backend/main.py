@@ -13,6 +13,7 @@ from services.email_service import send_screener_report
 from apscheduler.schedulers.background import BackgroundScheduler
 import datetime
 from datetime import timedelta
+from services.scraper import get_stock_name
 import plotly.graph_objects as go
 import pandas as pd
 from typing import Optional
@@ -394,7 +395,7 @@ def verify_price_increase(
         price_change = ((last_price - first_price) / first_price) * 100
         
         # 獲取股票名稱
-        stock_name = get_stock_name(stock_id)
+        stock_name = get_clean_stock_name(stock_id)
         
         # 檢查是否符合漲幅要求
         meets_criteria = price_change >= percent
@@ -476,7 +477,7 @@ frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
 if os.path.exists(frontend_dir):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
-# 修改最後的 uvicorn.run 調用
+# 移除重複的定義並恢復
 # 記錄最後寄信時間
 EMAIL_LOG_FILE = "email_sent_log.json"
 
