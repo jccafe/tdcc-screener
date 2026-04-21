@@ -261,9 +261,15 @@ def get_tw_yahoo_local_info(stock_id: str):
                     name = match_name.group(2).strip()
                     name = re.sub(r'<[^>]+>', '', name).strip()
             
-            # 安全檢查
-            if name and ("Yahoo" in name or len(name) > 10):
-                name = None
+            # 安全檢查 (絕對黑名單)
+            if name:
+                # 移除所有空白
+                name = name.replace(" ", "")
+                # 如果包含黑名單關鍵字或長度太長，直接作廢
+                if any(x in name for x in ["Yahoo", "股市", "登入", "電子報"]):
+                    name = None
+                elif len(name) > 10:
+                    name = None
             
             # 2. 抓取產業
             # 台灣 Yahoo 的產業標籤通常在 <div class="D(f) Ai(c) Mb(6px)"> 附近
