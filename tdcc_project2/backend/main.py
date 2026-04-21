@@ -479,7 +479,7 @@ if __name__ == "__main__":
     try:
         # 使用 workers=1 確保訊號處理簡單化
         # 增加 timeout_keep_alive 以便更快釋放連線
-        uvicorn.run(app, host="127.0.0.1", port=8001, timeout_keep_alive=5)
+        uvicorn.run(app, host="0.0.0.0", port=8001, timeout_keep_alive=5)
     except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
         print("\n正在停止伺服器...")
     except Exception as e:
