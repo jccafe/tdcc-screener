@@ -199,8 +199,15 @@ def run_screener(retail_level=9, large_level=14, weeks=3, ma_diff_percent=5.0, v
                     stock['ma_diff_pct'] = round((close_price - ma20) / ma20 * 100, 2)
                     stock['vol_ratio'] = round(current_vol_ratio, 2)
                     
+                    from services.scraper import get_stock_name
+                    def local_clean_name(sid, sname):
+                        if not sname or any(x in str(sname) for x in ["Yahoo", "股市", "登入", "頁"]):
+                            return get_stock_name(sid)
+                        return sname
+
                     stock_info = info_cache.get(stock_id, {})
-                    stock['stock_name'] = stock_info.get('name', f"股票{stock_id}")
+                    raw_name = stock_info.get('name', f"股票{stock_id}")
+                    stock['stock_name'] = local_clean_name(stock_id, raw_name)
                     stock['industry'] = stock_info.get('industry', '未分類')
                     # 檢查產業過濾
                     if industry_filter and industry_filter != 'all' and stock['industry'] != industry_filter:
