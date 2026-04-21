@@ -1,9 +1,22 @@
-
+# Python 暫存
 __pycache__/
 *.py[cod]
+*$py.class
+venv/
 .venv/
 .conda/
-*.sqlite
-tdcc.db
-backend/stock_price_cache/
+.env
 
+# 數據庫與暫存
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# 快取檔案
+cache/
+*.json
+!email_sent_log.json
+
+# VS Code
+.vscode/

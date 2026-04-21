@@ -238,35 +238,37 @@ def _contains_chinese(text: str):
 
 def get_tw_yahoo_local_info(stock_id: str):
     """
-    強化的 Yahoo 奇摩股市解析器
+    鋼鐵防護版：使用 curl_cffi 繞過封鎖
     """
     try:
-        url = f"https://tw.stock.yahoo.com/quote/{stock_id}" # 不加 .TW 有時反而更穩
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-        }
-        res = requests.get(url, headers=headers, timeout=10)
-        res.encoding = 'utf-8'
-        html = res.text
+        from curl_cffi import requests as curl_requests
+        url = f"https://tw.stock.yahoo.com/quote/{stock_id}"
+        # 模仿真正的 Chrome 瀏覽器指紋
+        res = curl_requests.get(url, impersonate="chrome110", timeout=15)
         
-        name = None
-        industry = None
-        
-        # 1. 精準名稱解析 (從 title 標籤分離)
-        title_match = re.search(r'<title>([^<]+?)\s*\('+re.escape(stock_id)+r'\)', html)
-        if title_match:
-            name = title_match.group(1).strip()
-            if "Yahoo" in name: name = None
-
-        # 2. 精準產業解析 (從 class 連結解析)
-        # 台灣 Yahoo 的格式範例: href="/class/半導體"
-        industry_match = re.search(r'href="/class/([^"\/]+)"[^>]*>([^<]+)</a>', html)
-        if industry_match:
-            industry = industry_match.group(2).strip()
+        if res.status_code == 200:
+            html = res.text
+            name = None
+            industry = None
             
-        return name, industry
-    except Exception:
-        pass
+            # 1. 抓取名稱
+            title_re = r'<title>([^<]+?)\s*\('+re.escape(stock_id)+r'\)'
+            title_match = re.search(title_re, html)
+            if title_match:
+                name = title_match.group(1).strip()
+            
+            # 2. 抓取產業
+            industry_match = re.search(r'href="/class/([^"\/]+)"[^>]*>([^<]+)</a>', html)
+            if industry_match:
+                industry = industry_match.group(2).strip()
+                
+            # 最終檢查
+            if name and any(x in name for x in ["Yahoo", "股市", "登入", "頁"]):
+                name = None
+                
+            return name, industry
+    except Exception as e:
+        print(f"Yahoo 抓取出錯: {e}")
     return None, None
 
 
