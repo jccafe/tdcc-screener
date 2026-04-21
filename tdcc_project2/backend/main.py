@@ -491,15 +491,15 @@ def check_and_send_weekly_report():
         print(f"[{datetime.datetime.now()}] 啟動定時任務檢查...")
         now = datetime.datetime.now()
         
-        # 判斷是否為週六 (5 為週六)
-        if now.weekday() != 5:
-            print(f"[{now.strftime('%Y-%m-%d %H:%M')}] 今天不是週六，跳過發信。")
-            return
+        # 判斷是否為週六 (這兩行臨時註解以進行測試)
+        # if now.weekday() != 5:
+        #    print(f"[{now.strftime('%Y-%m-%d %H:%M')}] 今天不是週六，跳過發信。")
+        #    return
             
         # 如果還沒到 7 點
-        if now.hour < 7:
-            print(f"[{now.strftime('%Y-%m-%d %H:%M')}] 還沒到早上 7 點，跳過發信。")
-            return
+        # if now.hour < 7:
+        #    print(f"[{now.strftime('%Y-%m-%d %H:%M')}] 還沒到早上 7 點，跳過發信。")
+        #    return
             
         # 檢查紀錄檔案
         this_week_id = now.strftime("%Y_week_%U")
