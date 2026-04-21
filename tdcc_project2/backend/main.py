@@ -9,7 +9,10 @@ import json
 from database import SessionLocal, TDCCData
 from sqlalchemy import func
 import yfinance as yf
-from datetime import datetime, timedelta
+from services.email_service import send_screener_report
+from apscheduler.schedulers.background import BackgroundScheduler
+import datetime
+from datetime import timedelta
 import plotly.graph_objects as go
 import pandas as pd
 from typing import Optional
@@ -474,6 +477,59 @@ if os.path.exists(frontend_dir):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
 # 修改最後的 uvicorn.run 調用
+# 記錄最後寄信時間
+EMAIL_LOG_FILE = "email_sent_log.json"
+
+def check_and_send_weekly_report():
+    """
+    檢查並發送每週報告：
+    1. 判斷現在是否為週六 07:00 之後。
+    2. 檢查本週是否已寄送過。
+    """
+    print(f"[{datetime.datetime.now()}] 正在檢查每週報告排程...")
+    now = datetime.datetime.now()
+    # 判斷是否為週六 (5 為週六)
+    if now.weekday() != 5:
+        return
+        
+    # 如果還沒到 7 點
+    if now.hour < 7:
+        return
+        
+    # 檢查紀錄檔案
+    this_week_id = now.strftime("%Y_week_%U")
+    if os.path.exists(EMAIL_LOG_FILE):
+        try:
+            with open(EMAIL_LOG_FILE, "r") as f:
+                log = json.load(f)
+                if log.get("last_week") == this_week_id:
+                    return
+        except:
+            pass
+
+    print("觸發自動發信任務！正在執行篩選...")
+    from services.screener import run_screener
+    db = SessionLocal()
+    latest_date_row = db.query(TDCCData.date).distinct().order_by(TDCCData.date.desc()).first()
+    db.close()
+    
+    if latest_date_row:
+        # 執行預設篩選 (3週, 大戶14, 散戶9)
+        results = run_screener(weeks=3, retail_level=9, large_level=14)
+        if results and not isinstance(results, dict):
+            success = send_screener_report(latest_date_row[0], results)
+            if success:
+                with open(EMAIL_LOG_FILE, "w") as f:
+                    json.dump({"last_week": this_week_id, "sent_at": str(now)}, f)
+
+# 啟動排程器
+scheduler = BackgroundScheduler()
+# 每小時檢查一次 (涵蓋了 07:00 之後的補寄邏輯)
+scheduler.add_job(check_and_send_weekly_report, 'interval', hours=1)
+# 啟動時也跑一次檢查
+scheduler.add_job(check_and_send_weekly_report, 'date', run_date=datetime.datetime.now() + datetime.timedelta(seconds=10))
+scheduler.start()
+
 if __name__ == "__main__":
     import uvicorn
     try:
