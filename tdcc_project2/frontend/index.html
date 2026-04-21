@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股市散戶監測儀</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js" charset="utf-8"></script>
+</head>
+<body>
+    <header>
+        <h1><i class="fa-solid fa-chart-line"></i> 股市散戶監測儀</h1>
+        <p>監測大戶增持、散戶減持股票，發現籌碼集中標的</p>
+    </header>
+
+    <div class="container">
+        <div class="control-panel">
+            <div class="panel-section">
+                <h3>籌碼條件設定</h3>
+                
+                <div class="settings-group">
+                    <div class="input-group">
+                        <label for="retail-level">散戶持股 (≤50張):</label>
+                        <div class="slider-container">
+                            <input type="range" id="retail-level" min="5" max="11" value="9">
+                            <span id="retail-level-value">減少 (9級)</span>
+                        </div>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="large-level">大戶持股 (≥400張):</label>
+                        <div class="slider-container">
+                            <input type="range" id="large-level" min="13" max="15" value="14">
+                            <span id="large-level-value">增加 (14級)</span>
+                        </div>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="weeks">連續週數:</label>
+                        <div class="slider-container">
+                            <input type="range" id="weeks" min="1" max="8" value="3">
+                            <span id="weeks-value">3週</span>
+                        </div>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="ma-diff">股價 vs 20MA:</label>
+                        <div class="slider-container">
+                            <input type="range" id="ma-diff" min="0" max="20" value="5">
+                            <span id="ma-diff-value">≤5%</span>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="vol-ratio">成交量爆量 (比MA5):</label>
+                        <div class="slider-container">
+                            <input type="range" id="vol-ratio" min="1.0" max="5.0" step="0.1" value="1.0">
+                            <span id="vol-ratio-value">≥1.0倍</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 新增的股價驗證區塊 -->
+            <div class="panel-section verification-section">
+                <h3>股價驗證設定</h3>
+                
+                <div class="settings-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="verify-price" name="verify-price">
+                        <label for="verify-price">驗證股價上漲表現</label>
+                    </div>
+
+                    <div class="input-group verify-group">
+                        <label for="verify-weeks">驗證週數:</label>
+                        <div class="slider-container">
+                            <input type="range" id="verify-weeks" min="1" max="8" value="1" disabled>
+                            <span id="verify-weeks-value">1週</span>
+                        </div>
+                    </div>
+                    
+                    <div class="input-group verify-group">
+                        <label for="verify-percent">上漲百分比:</label>
+                        <div class="slider-container">
+                            <input type="range" id="verify-percent" min="5" max="50" step="5" value="20" disabled>
+                            <span id="verify-percent-value">20%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <h3>資料區間</h3>
+                <div class="date-selectors">
+                    <div>
+                        <label for="start-date">起始日期:</label>
+                        <select id="start-date">
+                            <option value="">從最早資料</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="end-date">結束日期:</label>
+                        <select id="end-date">
+                            <option value="">到最新資料</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel-section">
+                <h3>產業過濾</h3>
+                <div class="industry-selector" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <select id="industry-category-filter">
+                        <option value="all">所有大類</option>
+                        <option value="tech">半導體/科技</option>
+                        <option value="finance">金融保險</option>
+                        <option value="material">塑化/材料</option>
+                        <option value="consumer">民生消費</option>
+                        <option value="medical">生技醫療</option>
+                        <option value="construction">營建房產</option>
+                        <option value="industrial">電機/工業</option>
+                        <option value="shipping">航運能源</option>
+                        <option value="commerce">商貿服飾</option>
+                        <option value="others">其他類</option>
+                    </select>
+                    <select id="industry-filter">
+                        <option value="all">所有細項</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="action-buttons">
+                <div class="update-controls">
+                    <label for="update-weeks-input">更新週數:</label>
+                    <input type="number" id="update-weeks-input" value="12" min="1" max="52">
+                    <button id="update-btn" class="btn btn-secondary">
+                        <i class="fa-solid fa-cloud-download"></i> 更新資料
+                    </button>
+                </div>
+                <button id="screen-btn" class="btn btn-primary">
+                    <i class="fa-solid fa-filter"></i> 開始篩選
+                </button>
+            </div>
+            
+            <div class="status-area">
+                <div id="loading-spinner" class="hidden">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>處理中...</span>
+                </div>
+                <div class="progress-container hidden" id="progress-container">
+                    <div class="progress-header">
+                        <div class="progress-status-container">
+                            <span id="progress-state">處理中...</span>
+                            <span id="eta-label" class="hidden"></span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span id="progress-percent">0%</span>
+                            <button id="reset-btn" class="btn-icon" title="強制重置任務">
+                                <i class="fa-solid fa-rotate"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="progress-bar-wrapper">
+                        <div id="progress-bar" class="progress-bar"></div>
+                    </div>
+                </div>
+                <div id="status-msg" class="status-msg"></div>
+            </div>
+        </div>
+        
+        <div class="results-panel">
+            <div class="results-header">
+                <h2>篩選結果 <span id="result-count">(0筆)</span></h2>
+                <div class="filter-option hidden" id="verify-filter-container">
+                    <input type="checkbox" id="filter-verified" checked>
+                    <label for="filter-verified">僅顯示驗證達標股票</label>
+                </div>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>觸發日</th>
+                            <th>代號</th>
+                            <th>股票名稱</th>
+                            <th>產業</th>
+                            <th>股價</th>
+                            <th>20MA</th>
+                            <th>偏離%</th>
+                            <th>散戶人數</th>
+                            <th>散戶變化</th>
+                            <th>大戶%</th>
+                            <th>大戶變化%</th>
+                            <th>量比</th>
+                            <th class="verify-col hidden">漲幅%</th>
+                            <th class="verify-col hidden">達標</th>
+                            <th>評分</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- 結果將在此顯示 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 股價圖表模態框 -->
+    <div id="chart-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="chart-title">股價走勢圖</h2>
+                <span id="close-modal" class="close">&times;</span>
+            </div>
+            <div id="stock-chart-container" class="stock-chart">
+                <!-- 圖表將在此顯示 -->
+                <div class="cache-indicator hidden">使用快取數據</div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2026 股市散戶監測儀 - 籌碼分析工具</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

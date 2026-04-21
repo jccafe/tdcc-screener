@@ -1,0 +1,65 @@
+TDCC 股市監測儀 - Raspberry Pi 4 移植部署指南
+1. 硬件需求 (Hardware Requirements)
+Raspberry Pi 4B (建議 4GB 或 8GB 版本，以應對大量數據計算)。
+MicroSD Card: 建議 32GB 以上，Class 10。
+冷卻: 強烈建議安裝風扇或大散熱片，抓取數據時 CPU 負擔較重。
+2. 環境準備 (Environment Setup)
+A. 操作系統
+建議安裝 Raspberry Pi OS (64-bit) 以獲得最佳效能與兼容性。
+
+B. 安裝必要系統依賴
+bash
+sudo apt update
+sudo apt install -y python3-pip python3-venv git libatlas-base-dev
+3. 部署步驟 (Deployment Steps)
+A. 程式碼轉移
+將專案資料夾 tdcc_project2 透過 SFTP 或 Git 上傳至樹莓派。
+
+B. 建立虛擬環境 (ARM64 優化)
+在樹莓派上，我們不建議跨平台搬移 .conda 資料夾，請重新建立：
+
+bash
+cd tdcc_project2
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install fastapi uvicorn sqlalchemy requests pandas yfinance plotly passlib python-multipart
+C. 檔案權限設定
+確保快取與資料庫目錄具備寫入權限：
+
+bash
+chmod -R 755 .
+mkdir -p backend/stock_price_cache
+4. 自動化啟動策略 (Automation)
+使用 Systemd 建立常駐服務
+建立服務檔案：sudo nano /etc/systemd/system/tdcc.service
+
+內容如下：
+
+ini
+[Unit]
+Description=TDCC Stock Screener Service
+After=network.target
+[Service]
+User=pi
+WorkingDirectory=/home/pi/tdcc_project2/tdcc_project2
+Environment="PATH=/home/pi/tdcc_project2/venv/bin"
+ExecStart=/home/pi/tdcc_project2/venv/bin/python backend/main.py
+Restart=always
+[Install]
+WantedBy=multi-user.target
+啟動並啟用服務：
+
+bash
+sudo systemctl daemon-reload
+sudo systemctl enable tdcc.service
+sudo systemctl start tdcc.service
+5. 樹莓派專屬優化建議
+內存快取 (TMPFS):
+考慮將 stock_price_cache 放在內存中，減少 SD 卡損耗並提速。
+修改 /etc/fstab：tmpfs /home/pi/tdcc_project2/tdcc_project2/backend/stock_price_cache tmpfs defaults,noatime,nosuid,size=100M 0 0
+靜態 IP:
+建議為樹莓派設定靜態 IP，方便您在區網內其他電腦直接輸入 http://樹莓派IP:8001 進行量化篩選。
+無頭模式 (Headless):
+您完全不需要給樹莓派接螢幕，透過 SSH 管理即可。
+© 2026 股市散戶監測儀 - 樹莓派部署指南
