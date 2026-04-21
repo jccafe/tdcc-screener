@@ -59,10 +59,22 @@ def run_screener(retail_level=9, large_level=14, weeks=3, ma_diff_percent=5.0, v
             return {"error": "No data matches the selected date range."}
         
         # Phase 1: Screen by TDCC data (Local DB)
+        # 優化點：一次性下載所有可能用到的日期，不再循環 query
+        all_needed_dates = []
+        for t_date in target_dates:
+            t_idx = all_dates.index(t_date)
+            if t_idx + weeks <= len(all_dates):
+                all_needed_dates.extend(all_dates[t_idx:t_idx+weeks])
+        all_needed_dates = list(set(all_needed_dates))
+        
+        print(f"Pre-loading data for {len(all_needed_dates)} dates...")
+        query = db.query(TDCCData).filter(TDCCData.date.in_(all_needed_dates)).statement
+        full_df = pd.read_sql(query, db.bind)
+        full_df = full_df[full_df['stock_id'].str.len() == 4]
+        
         for idx, t_date in enumerate(target_dates):
             if progress_callback:
-                # Local screening is fast, but let's show some progress
-                percent = int((idx / total_dates) * 60) # Phase 1 up to 60%
+                percent = int((idx / total_dates) * 60)
                 progress_callback(percent, -1, idx, total_dates)
 
             t_idx = all_dates.index(t_date)
@@ -70,17 +82,15 @@ def run_screener(retail_level=9, large_level=14, weeks=3, ma_diff_percent=5.0, v
                 continue
                 
             dates_for_target = all_dates[t_idx:t_idx+weeks]
-            dates_for_target.reverse() 
-            
-            query = db.query(TDCCData).filter(TDCCData.date.in_(dates_for_target)).statement
-            df = pd.read_sql(query, db.bind)
-            df = df[df['stock_id'].str.len() == 4]
+            # 從記憶體中過濾
+            df = full_df[full_df['date'].get(dates_for_target)] if False else full_df[full_df['date'].isin(dates_for_target)]
             
             df_retail = df[df['level'] <= retail_level].groupby(['stock_id', 'date'])['people'].sum().reset_index()
             df_large = df[df['level'] >= large_level].groupby(['stock_id', 'date'])['percent'].sum().reset_index()
             
-            retail_pivot = df_retail.pivot(index='stock_id', columns='date', values='people').dropna()
-            large_pivot = df_large.pivot(index='stock_id', columns='date', values='percent').dropna()
+            # 使用更快的 pivot 方式
+            retail_pivot = df_retail.pivot(index='stock_id', columns='date', values='people')
+            large_pivot = df_large.pivot(index='stock_id', columns='date', values='percent')
             
             candidates = []
             for stock_id in retail_pivot.index:

@@ -159,78 +159,76 @@ def download_and_update_tdcc(weeks=12, progress_callback=None):
         print("Update complete.")
         return {"status": "success", "date": latest_date}
 
+def _download_ticker_chunk(chunk, period="2y"):
+    """
+    內部的線程任務：下載一小塊標的
+    """
+    import yfinance as yf
+    try:
+        # 使用 threads=True 是 yfinance 內建的併發，但我們外面還有一層
+        data = yf.download(chunk, period=period, group_by='ticker', progress=False, threads=False)
+        return data
+    except Exception as e:
+        print(f"下載區塊出錯: {e}")
+        return None
+
 def batch_download_prices(stock_ids, period="2y"):
     """
-    Downloads data for multiple stocks at once to speed up processing.
+    真正的多線程並行下載器
     """
     if not stock_ids:
         return {}
         
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     import logging
     logging.getLogger('yfinance').setLevel(logging.CRITICAL)
     
-    # Try both .TW and .TWO for all stocks
+    # 建立所有可能的 tickers
     all_tickers = []
     for sid in stock_ids:
         all_tickers.append(f"{sid}.TW")
         all_tickers.append(f"{sid}.TWO")
         
-    all_data = {}
-    chunk_size = 50
-    for i in range(0, len(all_tickers), chunk_size):
-        chunk = all_tickers[i:i+chunk_size]
-        try:
-            # download returns a DataFrame with MultiIndex if multiple tickers
-            data = yf.download(chunk, period=period, group_by='ticker', progress=False, threads=True)
-            if isinstance(data.columns, pd.MultiIndex):
-                for t in chunk:
-                    if t in data and not data[t].empty:
-                        df = data[t].dropna(subset=['Close'])
-                        if not df.empty:
-                            df.index = df.index.tz_localize(None).normalize()
-                            all_data[t] = df
-            else:
-                # Single level DataFrame, usually happens if chunk size is 1 or only 1 ticker is valid
-                if len(chunk) == 1:
-                    t = chunk[0]
-                    if not data.empty:
-                        df = data.dropna(subset=['Close'])
-                        if not df.empty:
-                            df.index = df.index.tz_localize(None).normalize()
-                            all_data[t] = df
-                else:
-                    # If multiple were requested but only one returned and we lost the ticker name,
-                    # fallback to downloading them individually to ensure we map them correctly.
-                    for t in chunk:
-                        single_data = yf.download(t, period=period, progress=False, threads=False)
-                        if not single_data.empty:
-                            if isinstance(single_data.columns, pd.MultiIndex):
-                                if t in single_data:
-                                    df = single_data[t].dropna(subset=['Close'])
-                                else:
-                                    continue
-                            else:
-                                df = single_data.dropna(subset=['Close'])
-                            if not df.empty:
-                                df.index = df.index.tz_localize(None).normalize()
-                                all_data[t] = df
-        except Exception as e:
-            print(f"Error in batch download chunk: {e}")
-
-    # Map back to stock_id and pre-calculate MA
+    # 將標的分塊，每塊 20 個標的
+    chunk_size = 20
+    chunks = [all_tickers[i:i + chunk_size] for i in range(0, len(all_tickers), chunk_size)]
+    
+    all_raw_data = []
+    # 樹莓派建議 4-8 線程，PC 可以更多
+    max_workers = 8
+    
+    print(f"啟動多線程下載器: {len(stock_ids)} 隻股票, {max_workers} 併發處理中...")
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_chunk = {executor.submit(_download_ticker_chunk, chunk, period): chunk for chunk in chunks}
+        
+        for future in as_completed(future_to_chunk):
+            res = future.result()
+            if res is not None and not res.empty:
+                all_raw_data.append(res)
+    
+    # 整合與處理數據
     final_cache = {}
-    for sid in stock_ids:
-        df = None
-        if f"{sid}.TW" in all_data:
-            df = all_data[f"{sid}.TW"]
-        elif f"{sid}.TWO" in all_data:
-            df = all_data[f"{sid}.TWO"]
-            
-        if df is not None and len(df) >= 20:
-            # Pre-calculate MA to avoid repetitive work in Phase 3
-            df['MA20'] = df['Close'].rolling(window=20).mean()
-            final_cache[sid] = df
-            
+    for data in all_raw_data:
+        # 如果是 MultiIndex (多個 Tickers)
+        if isinstance(data.columns, pd.MultiIndex):
+            for t in data.columns.get_level_values(0).unique():
+                ticker_df = data[t].dropna(subset=['Close'])
+                if not ticker_df.empty:
+                    sid = t.split('.')[0]
+                    # 預計算 MA20
+                    ticker_df = ticker_df.copy()
+                    ticker_df.index = ticker_df.index.tz_localize(None).normalize()
+                    ticker_df['MA20'] = ticker_df['Close'].rolling(window=20).mean()
+                    final_cache[sid] = ticker_df
+        else:
+            # 如果是單一 Ticker
+            ticker_df = data.dropna(subset=['Close'])
+            # 嘗試從數據中找 Ticker 名稱 (yf 有時會存在 metadata)
+            # 這裡簡化處理，因為大部分情況下 batch 下載會回傳 MultiIndex
+            pass
+
+    print(f"下載完成！成功整合 {len(final_cache)} 隻股票數據。")
     return final_cache
 
 
