@@ -486,49 +486,54 @@ def check_and_send_weekly_report():
     1. 判斷現在是否為週六 07:00 之後。
     2. 檢查本週是否已寄送過。
     """
-    print(f"[{datetime.datetime.now()}] 正在檢查每週報告排程...")
-    now = datetime.datetime.now()
-    # 判斷是否為週六 (5 為週六)
-    if now.weekday() != 5:
-        return
+    try:
+        import os, json
+        print(f"[{datetime.datetime.now()}] 啟動定時任務檢查...")
+        now = datetime.datetime.now()
         
-    # 如果還沒到 7 點
-    if now.hour < 7:
-        return
-        
-    # 檢查紀錄檔案
-    this_week_id = now.strftime("%Y_week_%U")
-    if os.path.exists(EMAIL_LOG_FILE):
-        try:
+        # 判斷是否為週六 (5 為週六)
+        if now.weekday() != 5:
+            print(f"[{now.strftime('%Y-%m-%d %H:%M')}] 今天不是週六，跳過發信。")
+            return
+            
+        # 如果還沒到 7 點
+        if now.hour < 7:
+            print(f"[{now.strftime('%Y-%m-%d %H:%M')}] 還沒到早上 7 點，跳過發信。")
+            return
+            
+        # 檢查紀錄檔案
+        this_week_id = now.strftime("%Y_week_%U")
+        if os.path.exists(EMAIL_LOG_FILE):
             with open(EMAIL_LOG_FILE, "r") as f:
                 log = json.load(f)
                 if log.get("last_week") == this_week_id:
+                    print(f"[{now.strftime('%Y-%m-%d %H:%M')}] 本週報告已發送過。")
                     return
-        except:
-            pass
 
-    print("觸發自動發信任務！正在執行篩選...")
-    from services.screener import run_screener
-    db = SessionLocal()
-    latest_date_row = db.query(TDCCData.date).distinct().order_by(TDCCData.date.desc()).first()
-    db.close()
-    
-    if latest_date_row:
-        # 執行預設篩選 (3週, 大戶14, 散戶9)
-        results = run_screener(weeks=3, retail_level=9, large_level=14)
-        if results and not isinstance(results, dict):
-            success = send_screener_report(latest_date_row[0], results)
-            if success:
-                with open(EMAIL_LOG_FILE, "w") as f:
-                    json.dump({"last_week": this_week_id, "sent_at": str(now)}, f)
+        print("符合發信條件！正在執行篩選...")
+        from services.screener import run_screener
+        db = SessionLocal()
+        latest_date_row = db.query(TDCCData.date).distinct().order_by(TDCCData.date.desc()).first()
+        db.close()
+        
+        if latest_date_row:
+            results = run_screener(weeks=3, retail_level=9, large_level=14)
+            if results and not isinstance(results, dict):
+                success = send_screener_report(latest_date_row[0], results)
+                if success:
+                    with open(EMAIL_LOG_FILE, "w") as f:
+                        json.dump({"last_week": this_week_id, "sent_at": str(now)}, f)
+                    print("自動郵件報告發送成功。")
+    except Exception as e:
+        print(f"【排程任務錯誤】: {e}")
 
 # 啟動排程器
 scheduler = BackgroundScheduler()
-# 每小時檢查一次 (涵蓋了 07:00 之後的補寄邏輯)
 scheduler.add_job(check_and_send_weekly_report, 'interval', hours=1)
-# 啟動時也跑一次檢查
-scheduler.add_job(check_and_send_weekly_report, 'date', run_date=datetime.datetime.now() + datetime.timedelta(seconds=10))
+# 啟動 5 秒後執行第一次檢查 (稍微縮短等待時間)
+scheduler.add_job(check_and_send_weekly_report, 'date', run_date=datetime.datetime.now() + datetime.timedelta(seconds=5))
 scheduler.start()
+print(">>> 背景自動報告排程器已啟動。")
 
 if __name__ == "__main__":
     import uvicorn
