@@ -248,16 +248,22 @@ def get_tw_yahoo_local_info(stock_id: str):
         res = requests.get(url, headers=headers, timeout=10)
         res.encoding = 'utf-8'
         if res.status_code == 200:
-            name = None
-            industry = None
-            
-            # 抓取名稱
-            match_name = re.search(r'<h1[^>]*>([^<]+)</h1>', res.text)
+            # 1. 抓取名稱 (Yahoo 頁面上的 <h1> 通常包含 "股票代號 名稱")
+            # 範例: <h1 class="C($c-link-text) D(f) Ai(c) Mb(6px)">2330 台積電</h1>
+            match_name = re.search(r'<h1[^>]*>(?:<[^>]+>)*\s*(\d{4})?\s*([^<]+)\s*</h1>', res.text)
             if match_name:
-                name = match_name.group(1).strip()
+                raw_name = match_name.group(2).strip()
+                # 再次清理，移除可能殘留的 HTML 標籤
+                name = re.sub(r'<[^>]+>', '', raw_name).strip()
+                # 移除名稱開頭可能重複的代號
+                if name.startswith(stock_id):
+                    name = name[len(stock_id):].strip()
+                # 如果抓到的是 "Yahoo股市" 或長度太長，則設為 None
+                if "Yahoo" in name or len(name) > 10:
+                    name = None
             
-            # 抓取產業 (標籤格式通常為 <a href="..." class="...">半導體</a>)
-            # 我們找特徵
+            # 2. 抓取產業
+            # 台灣 Yahoo 的產業標籤通常在 <div class="D(f) Ai(c) Mb(6px)"> 附近
             match_industry = re.search(r'href="/class/([^"]+)"[^>]*>([^<]+)</a>', res.text)
             if match_industry:
                 industry = match_industry.group(2).strip()
