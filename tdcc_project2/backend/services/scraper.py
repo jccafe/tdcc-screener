@@ -248,18 +248,11 @@ def get_tw_yahoo_local_info(stock_id: str):
         res = requests.get(url, headers=headers, timeout=10)
         res.encoding = 'utf-8'
         if res.status_code == 200:
-            # 1. 抓取名稱 (從 <title> 中抓取最穩，格式通常是 "台積電 (2330) - 股價 ...")
-            title_match = re.search(r'<title>([^<]+?)\s*\(\d{4}\)', res.text)
+            # 1. 抓取名稱 (使用最直接的 title 標籤解析)
+            # 格式範例: <title>新麥 (1580) - 股價 - Yahoo 奇摩股市</title>
+            title_match = re.search(r'<title>([^<]+?)\s*\('+stock_id+r'\)', res.text)
             if title_match:
                 name = title_match.group(1).strip()
-                if "Yahoo" in name: name = None
-            
-            # 如果 Title 沒抓到，才試 H1
-            if not name:
-                match_name = re.search(r'<h1[^>]*>(?:<[^>]+>)*\s*(\d{4})?\s*([^<]+)\s*</h1>', res.text)
-                if match_name:
-                    name = match_name.group(2).strip()
-                    name = re.sub(r'<[^>]+>', '', name).strip()
             
             # 安全檢查 (絕對黑名單)
             if name:
