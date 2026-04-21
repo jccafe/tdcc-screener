@@ -248,18 +248,26 @@ def get_tw_yahoo_local_info(stock_id: str):
         res = requests.get(url, headers=headers, timeout=10)
         res.encoding = 'utf-8'
         if res.status_code == 200:
-            # 1. 抓取名稱 (使用最直接的 title 標籤解析)
-            # 格式範例: <title>新麥 (1580) - 股價 - Yahoo 奇摩股市</title>
-            title_match = re.search(r'<title>([^<]+?)\s*\('+stock_id+r'\)', res.text)
-            if title_match:
-                name = title_match.group(1).strip()
+            # 1. 抓取名稱 (多重保險模式)
+            raw_html = res.text
             
-            # 安全檢查 (絕對黑名單)
+            # 模式 A: <title>名稱 (代號) - 股價 ...
+            match_a = re.search(r'<title>([^<]+?)\s*\('+re.escape(stock_id)+r'\)', raw_html)
+            # 模式 B: <title>代號 名稱 - 股價 ...
+            match_b = re.search(r'<title>'+re.escape(stock_id)+r'\s+([^<]+?)\s*-[^<]*</title>', raw_html)
+            # 模式 C: 標題中任何包含括號代號的文字
+            match_c = re.search(r'([^<>\-]+?)\s*\('+re.escape(stock_id)+r'\)', raw_html)
+
+            if match_a: name = match_a.group(1).strip()
+            elif match_b: name = match_b.group(1).strip()
+            elif match_c: name = match_c.group(1).strip()
+
+            # 額外清理
             if name:
-                # 移除所有空白
-                name = name.replace(" ", "")
-                # 如果包含黑名單關鍵字或長度太長，直接作廢
-                if any(x in name for x in ["Yahoo", "股市", "登入", "電子報"]):
+                # 剔除奇怪的 prefix
+                name = re.sub(r'^[^\w\u4e00-\u9fff]+', '', name)
+                # 再次檢查黑名單
+                if any(x in name for x in ["Yahoo", "股市", "登入", "電子報", "首頁"]):
                     name = None
                 elif len(name) > 10:
                     name = None
