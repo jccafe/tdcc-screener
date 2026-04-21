@@ -530,16 +530,22 @@ def check_and_send_weekly_report():
 # 啟動排程器
 scheduler = BackgroundScheduler()
 scheduler.add_job(check_and_send_weekly_report, 'interval', hours=1)
-# 啟動 5 秒後執行第一次檢查 (稍微縮短等待時間)
-scheduler.add_job(check_and_send_weekly_report, 'date', run_date=datetime.datetime.now() + datetime.timedelta(seconds=5))
-scheduler.start()
-print(">>> 背景自動報告排程器已啟動。")
+
+# 在 FastAPI 啟動時發動排程器
+@app.on_event("startup")
+async def start_scheduler():
+    scheduler.start()
+    # 啟動時立刻執行一次檢查 (異步執行)
+    import threading
+    threading.Thread(target=check_and_send_weekly_report).start()
+    print(">>> [系統啟動] 背景自動報告排程器已就緒。")
 
 if __name__ == "__main__":
     import uvicorn
+    # 強制關禁閉輸出的緩衝
+    import os
+    os.environ["PYTHONUNBUFFERED"] = "1"
     try:
-        # 使用 workers=1 確保訊號處理簡單化
-        # 增加 timeout_keep_alive 以便更快釋放連線
         uvicorn.run(app, host="0.0.0.0", port=8001, timeout_keep_alive=5)
     except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
         print("\n正在停止伺服器...")
