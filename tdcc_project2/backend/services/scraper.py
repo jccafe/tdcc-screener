@@ -252,15 +252,15 @@ def get_tw_yahoo_local_info(stock_id: str):
             industry = None
             
             # 1. 抓取名稱
-            title_re = r'<title>([^<]+?)\s*\('+re.escape(stock_id)+r'\)'
+            title_re = r'<title>([^<]+?)\s*\(' + re.escape(stock_id) + r'(?:\.TW|\.TWO)?\)'
             title_match = re.search(title_re, html)
             if title_match:
                 name = title_match.group(1).strip()
             
             # 2. 抓取產業
-            industry_match = re.search(r'href="/class/([^"\/]+)"[^>]*>([^<]+)</a>', html)
+            industry_match = re.search(r'href="/class-quote\?[^"]+"[^>]*>([^<]+)</a>', html)
             if industry_match:
-                industry = industry_match.group(2).strip()
+                industry = industry_match.group(1).strip()
                 
             # 最終檢查
             if name and any(x in name for x in ["Yahoo", "股市", "登入", "頁"]):

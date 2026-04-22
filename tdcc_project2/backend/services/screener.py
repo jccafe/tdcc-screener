@@ -72,6 +72,13 @@ def run_screener(retail_level=9, large_level=14, weeks=3, ma_diff_percent=5.0, v
         full_df = pd.read_sql(query, db.bind)
         full_df = full_df[full_df['stock_id'].str.len() == 4]
         
+        # 進行全局 Pivot 運算，徹底消除內部迴圈的 DataFrame 開銷
+        df_retail = full_df[full_df['level'] <= retail_level].groupby(['stock_id', 'date'])['people'].sum().reset_index()
+        df_large = full_df[full_df['level'] >= large_level].groupby(['stock_id', 'date'])['percent'].sum().reset_index()
+        
+        retail_pivot = df_retail.pivot(index='stock_id', columns='date', values='people')
+        large_pivot = df_large.pivot(index='stock_id', columns='date', values='percent')
+        
         for idx, t_date in enumerate(target_dates):
             if progress_callback:
                 percent = int((idx / total_dates) * 60)
@@ -82,54 +89,63 @@ def run_screener(retail_level=9, large_level=14, weeks=3, ma_diff_percent=5.0, v
                 continue
                 
             dates_for_target = all_dates[t_idx:t_idx+weeks]
-            # 從記憶體中過濾
-            df = full_df[full_df['date'].get(dates_for_target)] if False else full_df[full_df['date'].isin(dates_for_target)]
+            # 確保按照時間先後排序 (由舊到新)，這樣 columns 的順序才會正確
+            sorted_dates = sorted(dates_for_target) 
             
-            df_retail = df[df['level'] <= retail_level].groupby(['stock_id', 'date'])['people'].sum().reset_index()
-            df_large = df[df['level'] >= large_level].groupby(['stock_id', 'date'])['percent'].sum().reset_index()
+            # 從 pivot 取出對應的欄位
+            valid_dates = [d for d in sorted_dates if d in retail_pivot.columns and d in large_pivot.columns]
+            if len(valid_dates) < weeks:
+                continue
+
+            # 向量化過濾
+            r_slice = retail_pivot[valid_dates].dropna()
+            l_slice = large_pivot[valid_dates].dropna()
             
-            # 使用更快的 pivot 方式
-            retail_pivot = df_retail.pivot(index='stock_id', columns='date', values='people')
-            large_pivot = df_large.pivot(index='stock_id', columns='date', values='percent')
+            common_stocks = r_slice.index.intersection(l_slice.index)
+            if common_stocks.empty:
+                continue
+                
+            r_slice = r_slice.loc[common_stocks]
+            l_slice = l_slice.loc[common_stocks]
+            
+            # 散戶人數：必須持續減少 -> 越新的越小 -> r_diff = (新 - 舊) < 0
+            r_diff = r_slice.diff(axis=1).iloc[:, 1:]
+            retail_decreasing = (r_diff < 0).all(axis=1)
+            
+            # 大戶持股：必須持續增加 -> 越新的越大 -> l_diff = (新 - 舊) > 0
+            l_diff = l_slice.diff(axis=1).iloc[:, 1:]
+            large_increasing = (l_diff > 0).all(axis=1)
+            
+            mask = retail_decreasing & large_increasing
+            valid_stocks = common_stocks[mask]
             
             candidates = []
-            for stock_id in retail_pivot.index:
-                if stock_id not in large_pivot.index:
-                    continue
-                r_vals = retail_pivot.loc[stock_id].values
-                l_vals = large_pivot.loc[stock_id].values
-                if len(r_vals) < weeks or len(l_vals) < weeks:
-                    continue
+            for stock_id in valid_stocks:
+                r_vals = r_slice.loc[stock_id].values
+                l_vals = l_slice.loc[stock_id].values
                 
-                retail_decreasing = all(r_vals[i] > r_vals[i+1] for i in range(len(r_vals)-1))
-                large_increasing = all(l_vals[i] < l_vals[i+1] for i in range(len(l_vals)-1))
+                # 計算評分 (Score)
+                # 這裡 l_vals[-1] 是最新的資料，l_vals[0] 是最舊的
+                large_inc_pct = l_vals[-1] - l_vals[0]
+                score_large = min(40, (large_inc_pct / 5.0) * 40)
                 
-                if retail_decreasing and large_increasing:
-                    # 計算評分 (Score)
-                    # 1. 大戶增持分數 (40%) - 累計增持達到 5% 才是滿分
-                    large_inc_pct = l_vals[-1] - l_vals[0]
-                    score_large = min(40, (large_inc_pct / 5.0) * 40)
-                    
-                    # 2. 散戶減持分數 (40%) - 人數累計減持超過 8% 才是滿分
-                    retail_dec_pct = (r_vals[0] - r_vals[-1]) / r_vals[0] if r_vals[0] > 0 else 0
-                    score_retail = min(40, (retail_dec_pct / 0.08) * 40)
-                    
-                    # 3. 基礎分與一致性 (20%)
-                    score_base = 20
-                    
-                    total_score = round(score_base + score_large + score_retail, 0)
-                    total_score = int(min(100, max(0, total_score)))
+                retail_dec_pct = (r_vals[0] - r_vals[-1]) / r_vals[0] if r_vals[0] > 0 else 0
+                score_retail = min(40, (retail_dec_pct / 0.08) * 40)
+                
+                score_base = 20
+                total_score = round(score_base + score_large + score_retail, 0)
+                total_score = int(min(100, max(0, total_score)))
 
-                    candidates.append({
-                        "trigger_date": f"{t_date[:4]}-{t_date[4:6]}-{t_date[6:]}",
-                        "stock_id": stock_id,
-                        "retail_current": int(r_vals[-1]),
-                        "retail_change": int(r_vals[-1] - r_vals[0]),
-                        "large_current_pct": round(l_vals[-1], 2),
-                        "large_change_pct": round(large_inc_pct, 2),
-                        "score": total_score
-                    })
-                    unique_stock_ids.add(stock_id)
+                candidates.append({
+                    "trigger_date": f"{t_date[:4]}-{t_date[4:6]}-{t_date[6:]}",
+                    "stock_id": stock_id,
+                    "retail_current": int(r_vals[-1]),
+                    "retail_change": int(r_vals[-1] - r_vals[0]),
+                    "large_current_pct": round(l_vals[-1], 2),
+                    "large_change_pct": round(large_inc_pct, 2),
+                    "score": total_score
+                })
+                unique_stock_ids.add(stock_id)
             
             all_candidates_by_date[t_date] = candidates
 
@@ -228,10 +244,13 @@ def run_screener(retail_level=9, large_level=14, weeks=3, ma_diff_percent=5.0, v
                             
                             if not window.empty:
                                 max_p = float(window['High'].max())
-                                change = (max_p - close_price) / close_price * 100
-                                stock['verify_price_change_pct'] = round(change, 2)
-                                if change >= verify_percent:
-                                    verify_success = True
+                                if close_price > 0:
+                                    change = (max_p - close_price) / close_price * 100
+                                    stock['verify_price_change_pct'] = round(change, 2)
+                                    if change >= verify_percent:
+                                        verify_success = True
+                                else:
+                                    stock['verify_price_change_pct'] = 0.0
                         
                         stock['verify_meets_criteria'] = verify_success
                     

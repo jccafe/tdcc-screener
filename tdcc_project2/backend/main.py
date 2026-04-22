@@ -395,7 +395,7 @@ def verify_price_increase(
         price_change = ((last_price - first_price) / first_price) * 100
         
         # 獲取股票名稱
-        stock_name = get_clean_stock_name(stock_id)
+        stock_name = get_stock_name(stock_id)
         
         # 檢查是否符合漲幅要求
         meets_criteria = price_change >= percent

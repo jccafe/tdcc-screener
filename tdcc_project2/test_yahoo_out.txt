@@ -1,0 +1,2 @@
+Found 半導體 at 46699
+Context around 半導體: class=""><a class="tag D(if) Td(n) Px(8px) Py(3px) Mend(8px) Fz(12px) Fw(b) Bdrs(11px) Whs(nw) C(#188fff) Bgc($tag-bg-blue) Bgc($tag-bg-blue-hover):h" href="/class-quote?sectorId=40&amp;exchange=TAI">半導體</a><a class="tag D(if) Td(n) Px(8px) Py(3px) Mend(8px) Fz(12px) Fw(b) Bdrs(11px) Whs(nw) C($c-link-text) Bgc($tag-bg-red) Bgc($tag-bg-red-hover):h" href="/community/rank/active?category=TAI_TWO">最
